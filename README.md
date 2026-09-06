@@ -124,6 +124,24 @@ $ tailcat serve 5555:10.2.200.213:5555
 
 Then on the client, `tailcat forward tcXXXXXXXXX 5555` followed by `adb connect 127.0.0.1:5555`. Write IPv6 targets in brackets: `5555:[fd7a::1]:5555`.
 
+### Expose a local Unix-domain socket
+
+To proxy every connection to a local Unix-domain stream socket, pass its
+pathname to `serve`. Tailcat does not create or change the socket, so its
+filesystem permissions remain under the local service's control. The service
+uses port 1, which is what `tailcat` dials when no destination port is given:
+
+```sh
+$ tailcat serve --unix-socket=/run/git-annex/socket
+# 🐈 Server listening with new address: tcXXXXXXXXX
+```
+
+Each client connection gets its own connection to the socket:
+
+```sh
+$ tailcat tcXXXXXXXXX
+```
+
 ### Forward local ports to a tailcat server
 
 To make ports served by a tailcat server available as ordinary local TCP ports (for browsers, database clients, or other tools that do not support SOCKS or stdio), run `forward` with the server's tailcat address:
