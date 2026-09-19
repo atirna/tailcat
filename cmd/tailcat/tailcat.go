@@ -104,7 +104,7 @@ func newRootCommand() *ff.Command {
 	flagAllow = serveFS.StringLong("allow", "", "comma-separated list of public keys to allow access to the server, or 'none' to allow no clients. If empty, all clients are allowed.")
 	flagFullAddress = serveFS.BoolLong("full-address", "print a longer tailcat address with embedded DERP server info instead of a reference to a DERP map region ID. This lets clients connect more quickly, without a DERP map fetch.")
 	flagFiles = serveFS.StringLong("files", "", "directory to serve to SFTP clients (scp, sftp) with the 'files' service, with an optional :ro (read-only, the default), :rw (read-write), :wo (flat write-only drop box), or :wo+ (recursive write-only drop box) suffix. If empty, the current directory is served read-only. Giving --files implies the 'files' service.")
-	flagUnixSocket = serveFS.StringLong("unix-socket", "", "pathname of a Unix-domain stream socket to proxy connections to. It is served on port 1, the default port used by a tailcat client without a destination.")
+	flagUnixSocket = serveFS.StringLong("unix-socket", "", "pathname of a Unix-domain stream socket to proxy connections to, with an optional ',port' suffix naming the port it is served on (default 1, the port a tailcat client dials without a destination).")
 	flagSSHAuthorizedKeys = serveFS.StringLong("ssh-authorized-keys", "", "comma-separated SSH public key sources for the 'ssh' service: authorized_keys file paths, literal OpenSSH public key lines, or names like 'alice@github' (fetched from https://github.com/alice.keys). All sources are loaded and validated at startup.")
 	flagPSK = serveFS.BoolLongDefault("psk", true, "include a WireGuard pre-shared key in the tailcat address (recommended). Set false only for shorter addresses and compatibility with tailcat clients v0.5.0 and earlier; this weakens security.")
 
@@ -1241,6 +1241,24 @@ func splitExecArgs(args []string) (positional, execArgs []string) {
 	return positional, execArgs
 }
 
+func parseUnixSocketFlag(v string) (socket string, port uint16, err error) {
+	if v == "" {
+		return "", 1, nil
+	}
+	socket, portStr, hasPort := strings.Cut(v, ",")
+	if socket == "" {
+		return "", 0, fmt.Errorf("missing socket pathname in %q", v)
+	}
+	if !hasPort {
+		return socket, 1, nil
+	}
+	p, err := strconv.ParseUint(portStr, 10, 16)
+	if err != nil || p == 0 {
+		return "", 0, fmt.Errorf("invalid port %q in %q", portStr, v)
+	}
+	return socket, uint16(p), nil
+}
+
 // server runs a tailcat server. execArgs is the command given after
 // "--", or nil.
 func server(logf logger.Logf, serveSpec string, execArgs []string) {
@@ -1308,7 +1326,10 @@ func server(logf logger.Logf, serveSpec string, execArgs []string) {
 	}
 	// A server running only named services isn't the empty-port-list
 	// accept-one-connection stdout mode.
-	unixSocket := *flagUnixSocket
+	unixSocket, unixSocketPort, err := parseUnixSocketFlag(*flagUnixSocket)
+	if err != nil {
+		log.Fatalf("--unix-socket: %v", err)
+	}
 	oneShotStdout := len(portSet) == 0 && len(services) == 0 && unixSocket == ""
 
 	var reg *tailcfg.DERPRegion
@@ -1409,8 +1430,8 @@ func server(logf logger.Logf, serveSpec string, execArgs []string) {
 	// OnTCP gate.
 	if !oneShotStdout && !services.Contains("exit-node") && !services.Contains("exec") {
 		ports := slices.Sorted(maps.Keys(portSet))
-		if unixSocket != "" && !portSet.Contains(1) {
-			ports = append([]uint16{1}, ports...)
+		if unixSocket != "" && !portSet.Contains(unixSocketPort) {
+			ports = append([]uint16{unixSocketPort}, ports...)
 		}
 		if sshServices && !portSet.Contains(22) {
 			ports = append([]uint16{22}, ports...)
@@ -1551,7 +1572,7 @@ func server(logf logger.Logf, serveSpec string, execArgs []string) {
 		if port == perf.Port && perfSrv != nil {
 			return perfSrv.HandleTCP
 		}
-		if port == 1 && unixSocket != "" {
+		if port == unixSocketPort && unixSocket != "" {
 			return forwardTo("unix", unixSocket)
 		}
 		if portSet.Contains(port) {

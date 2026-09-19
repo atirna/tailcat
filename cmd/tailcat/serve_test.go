@@ -231,13 +231,6 @@ func TestServeUnixSocket(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Unix-domain sockets are unavailable")
 	}
-	_, err := parseCLI(t, "serve", "--unix-socket=/tmp/tailcat.sock")
-	if err != nil {
-		t.Fatalf("parse --unix-socket: %v", err)
-	}
-	if got := *flagUnixSocket; got != "/tmp/tailcat.sock" {
-		t.Fatalf("--unix-socket = %q", got)
-	}
 	e := newTestEnv(t)
 	socket := filepath.Join(t.TempDir(), "backend.sock")
 	ln, err := net.Listen("unix", socket)

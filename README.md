@@ -127,13 +127,24 @@ Then on the client, `tailcat forward tcXXXXXXXXX 5555` followed by `adb connect 
 ### Expose a local Unix-domain socket
 
 To proxy every connection to a local Unix-domain stream socket, pass its
-pathname to `serve`. Tailcat does not create or change the socket, so its
-filesystem permissions remain under the local service's control. The service
-uses port 1, which is what `tailcat` dials when no destination port is given:
+pathname to `serve`, with an optional `,port` suffix for the port to serve it
+on. Tailcat does not create or change the socket, so its filesystem
+permissions remain under the local service's control. The default is port 1,
+which is what `tailcat` dials when no destination port is given:
 
 ```sh
 $ tailcat serve --unix-socket=/run/git-annex/socket
 # 🐈 Server listening with new address: tcXXXXXXXXX
+
+# or on a specific port, e.g. to keep port 1 free:
+$ tailcat serve --unix-socket=/run/git-annex/socket,8022
+```
+
+Clients reach a non-default port the same way as any served port, by naming
+it in `forward` (here `8022` is the remote port):
+
+```sh
+$ tailcat forward tcXXXXXXXXX 18022:8022
 ```
 
 Each client connection gets its own connection to the socket:
